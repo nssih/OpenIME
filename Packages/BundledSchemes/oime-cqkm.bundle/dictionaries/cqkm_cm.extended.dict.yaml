@@ -1,0 +1,29 @@
+# 超强快码 · extended 派生规则表（encoder）
+# 著作权人：付东升【辽宁中医药大学附属第二医院】
+# OpenIME 仅内置其词库数据（经作者许可）；本表只保留 encoder 派生规则，原生 demo 示例行已删。
+---
+name: cqkm_cm.extended
+version: "1.0"
+sort: by_weight
+columns:
+  - text
+  - code
+  - weight
+  - stem
+encoder:
+  rules:
+    - length_equal: 2
+      formula: "AaAbBaBb"
+    - length_equal: 3
+      formula: "AaAbBaCa"
+    - length_in_range: [4, 300]
+      formula: "AaBaCaZa"
+import_tables:
+  - cqkm_cm        #主码表
+#  - ipinyin     #反查副码表
+#  - A           #示例A副码表
+#注:申明副码表后却无文件会卡死
+...
+# OpenIME 内置归一：原生 demo 示例行（诗句 / date / addr / mail / tel）已删除，
+# 否则它们会作为真候选进入词库；原生的 exclude_patterns（'^[iuv].*$|[ao]$'）整段不采用，
+# 理由见 scripts/prepare_bundled_shape_schemes.py 头注。

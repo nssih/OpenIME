@@ -1,0 +1,92 @@
+name: Build IPA
+
+on:
+  push:
+    branches:
+      - main          # 每次推送到 main 分支自动触发
+    tags:
+      - "v*"          # 推送正式版 tag（如 v1.0.0）触发，会发布 Release
+  workflow_dispatch:  # 也可以在 GitHub 网页上手动触发
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Install iOS Platform
+        run: xcodebuild -downloadPlatform iOS
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -scheme OpenIME
+
+      - name: Build archive (unsigned)
+        run: |
+          xcodebuild archive \
+            -scheme OpenIME \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/OpenIME.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            SKIP_INSTALL=NO \
+            | xcpretty || true
+          ls "$RUNNER_TEMP/OpenIME.xcarchive/Products/Applications/"
+
+      - name: Export unsigned IPA
+        run: |
+          APP_PATH=$(find "$RUNNER_TEMP/OpenIME.xcarchive/Products/Applications" -name "*.app" | head -1)
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -r "$APP_PATH" "$RUNNER_TEMP/Payload/OpenIME.app"
+          cd "$RUNNER_TEMP"
+          zip -r OpenIME-unsigned.ipa Payload
+          echo "IPA_PATH=$RUNNER_TEMP/OpenIME-unsigned.ipa" >> $GITHUB_ENV
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "IS_RELEASE=true" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "VERSION=dev-$(date +%Y%m%d-%H%M)-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "IS_RELEASE=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenIME-${{ steps.version.outputs.VERSION }}-unsigned
+          path: ${{ env.IPA_PATH }}
+          retention-days: 30     # 非正式版保留 30 天后自动删除
+
+      # 以下只在推送正式版 tag 时执行，创建 GitHub Release
+      - name: Create GitHub Release
+        if: steps.version.outputs.IS_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenIME ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## 安装方法
+
+            > **注意**：此 IPA 为未签名版本，需要通过 AltStore 或 Sideloadly 安装。
+            > 详细步骤见 [README 安装说明](../../blob/main/README.md#安装)。
+
+            下载下方的 `OpenIME-unsigned.ipa` 文件，然后按照 README 中的步骤操作。
+          files: ${{ env.IPA_PATH }}
+          draft: false
+          prerelease: false

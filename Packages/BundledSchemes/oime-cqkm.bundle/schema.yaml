@@ -1,0 +1,7 @@
+type: direct
+max_code_length: 4
+auto_select: true
+auto_clear: max_length
+enable_sentence: false
+code_system: phono_shape
+reverse_lookup_guide: i

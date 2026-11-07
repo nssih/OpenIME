@@ -1,0 +1,4 @@
+type: syllable
+max_code_length: 0
+auto_select: false
+normalize_code: strip_spaces

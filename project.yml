@@ -1,0 +1,170 @@
+name: OpenIME
+options:
+  bundleIdPrefix: com.openime
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    # 签名口径：模拟器与 CI 走 ad-hoc（不校验描述文件），真机走 Apple Development。
+    # Team 属个人信息，一律不写在本文件里：真机请在 Xcode「Signing & Capabilities」里
+    # 选一次，或命令行临时传入（写在 pbxproj / 命令行都不入库）：
+    #   xcodebuild -scheme OpenIME -destination 'id=<设备UDID>' \
+    #     DEVELOPMENT_TEAM=<你的TeamID> -allowProvisioningUpdates build
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY[sdk=iphonesimulator*]: "-"
+    CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "YES"
+    AD_HOC_CODE_SIGNING_ALLOWED: "YES"
+
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
+
+targets:
+
+  # 主 App
+  OpenIME:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIME/UI
+      - path: OpenIME/Assets.xcassets   # 应用图标资源（漏了就不会进 Assets.car，主屏无图标）
+      - path: Packages/BundledSchemes
+        type: folder
+      # 隐私清单：本 App 用到 UserDefaults 与文件时间戳两类需申报 API，上架必需。
+      # 放 sources 而非 resources：与键盘/分享扩展同一携带机制，避免同名文件被 xcodegen 去重丢弃。
+      - path: Shared/PrivacyInfo.xcprivacy
+    resources:
+      - path: Packages/BundledSchemes
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.app
+      INFOPLIST_FILE: OpenIME/Info.plist
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: OpenIME/OpenIME.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openime.shared
+    dependencies:
+      - package: ZIPFoundation
+      - target: OpenIMECore
+      - target: OpenIMEKeyboard
+        embed: true
+      - target: OpenIMEShare
+        embed: true
+
+  # 共享核心库
+  OpenIMECore:
+    type: framework
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIME/Sources
+      # emoji_word.txt 放在 Shared/Emoji/ 里随核心库源路径一起被 xcodegen 归入资源：
+      # IMERuntime 在 OpenIMECore，主 App 与键盘扩展共享同一份 framework bundle，数据打进这个 bundle
+      # 后两侧都能用 Bundle(for:) 取到，无需像词库那样首装拷进 App Group（仅 178KB、静态只读）。
+      # 注意：framework/app-extension 上单写 resources: 会被 xcodegen 静默丢弃（无 Resources 构建阶段），
+      # 必须靠 sources 路径携带资源文件——与键盘扩展打包字体的机制同源。
+      - path: Shared
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.core
+      GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - package: ZIPFoundation
+
+  # 键盘扩展
+  OpenIMEKeyboard:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIMEKeyboard/Sources
+      - path: OpenIMEKeyboard/Resources
+      # app-extension 单写 resources 会被 xcodegen 丢弃，隐私清单靠 sources 路径携带进 bundle
+      - path: Shared/PrivacyInfo.xcprivacy
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.app.keyboard
+      INFOPLIST_FILE: OpenIMEKeyboard/Info.plist
+    entitlements:
+      path: OpenIMEKeyboard/OpenIMEKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openime.shared
+    dependencies:
+      - target: OpenIMECore
+
+  # 分享扩展
+  OpenIMEShare:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIMEShare/Sources
+      # 同上，隐私清单靠 sources 路径携带进扩展 bundle
+      - path: Shared/PrivacyInfo.xcprivacy
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.app.share
+      INFOPLIST_FILE: OpenIMEShare/Info.plist
+    entitlements:
+      path: OpenIMEShare/OpenIMEShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openime.shared
+    dependencies:
+      - target: OpenIMECore
+
+  # Unit Tests
+  OpenIMETests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIMETests
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.tests
+      TEST_TARGET_NAME: OpenIME
+      GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: OpenIMECore
+
+  # UI Tests
+  OpenIMEUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: OpenIMEUITests
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.openime.uitests
+      TEST_TARGET_NAME: OpenIME
+      GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: OpenIME
+
+schemes:
+  OpenIME:
+    build:
+      targets:
+        OpenIME: all
+        OpenIMEKeyboard: all
+        OpenIMEShare: all
+        OpenIMETests: testing
+        OpenIMEUITests: testing
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - OpenIMETests
+        - OpenIMEUITests
+    profile:
+      config: Release
+    archive:
+      config: Release

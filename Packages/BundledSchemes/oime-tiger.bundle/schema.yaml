@@ -1,0 +1,5 @@
+type: direct
+max_code_length: 4
+auto_select: false
+enable_sentence: false
+code_system: shape
